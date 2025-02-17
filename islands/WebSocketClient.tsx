@@ -1,13 +1,22 @@
 import { useState, useEffect, useRef } from "preact/hooks";
+import { MessageArea } from "../components/MessageArea.tsx";
 
 interface WebSocketClientProps {
   roomId: string;
 }
 
+interface WebSocketMessage {
+  type: 'chat' | 'object';
+  data: string | object;
+}
+
 export default function WebSocketClient({ roomId }: WebSocketClientProps) {
-  const [messages, setMessages] = useState<string[]>([]);
+  const [chatMessages, setChatMessages] = useState<string[]>([]);
+  const [syncedObject, setSyncedObject] = useState<object | null>(null);
+
   const [input, setInput] = useState("");
   const socketRef = useRef<WebSocket | null>(null);
+
 
   useEffect(() => {
     const connectWebSocket = () => {
@@ -18,9 +27,20 @@ export default function WebSocketClient({ roomId }: WebSocketClientProps) {
       };
 
       socket.onmessage = (event) => {
-        console.log("Message from server:", event.data);
-        setMessages((prev) => [...prev, event.data]);
+        const message: WebSocketMessage = JSON.parse(event.data);
+
+        switch (message.type) {
+          case 'chat':
+            setChatMessages((prev) => [...prev, message.data as string]);
+            break;
+          case 'object':
+            setSyncedObject(message.data as object);
+            break;
+          default:
+            console.error('Unknown message type:', message.type);
+        }
       };
+
 
       socket.onclose = () => {
         console.log("WebSocket disconnected (client)");
@@ -39,9 +59,10 @@ export default function WebSocketClient({ roomId }: WebSocketClientProps) {
     };
   }, [roomId]);
 
-  const sendMessage = () => {
+  const sendMessage = (type: 'chat' | 'object', data: string | object) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(input);
+      const message: WebSocketMessage = { type, data };
+      socketRef.current.send(JSON.stringify(message));
       setInput("");
     } else {
       console.error("WebSocket is not connected");
@@ -50,19 +71,16 @@ export default function WebSocketClient({ roomId }: WebSocketClientProps) {
 
   return (
       <div>
-        <h2>チャット</h2>
-        <div style={{ border: "1px solid #ccc", padding: "10px", height: "300px", overflowY: "scroll" }}>
-          {messages.map((msg, index) => (
-              <div key={index}>{msg}</div>
-          ))}
-        </div>
-        <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.currentTarget.value)}
-            placeholder="メッセージを入力..."
+        <MessageArea
+            messages={chatMessages}
+            input={input}
+            setInput={setInput}
+            sendMessage={sendMessage}
         />
-        <button onClick={sendMessage}>送信</button>
+
+        <h2>同期オブジェクト</h2>
+        <pre>{JSON.stringify(syncedObject, null, 2)}</pre>
+        {/* オブジェクト編集用のUIを追加 */}
       </div>
   );
 }
